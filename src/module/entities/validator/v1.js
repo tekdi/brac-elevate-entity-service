@@ -145,6 +145,11 @@ module.exports = (req) => {
 		registryMappingUpload: function () {
 			req.checkQuery('entityType').exists().withMessage('required entity type')
 		},
+		createUserAsAnEntity: function () {
+			// Minimal validation for internal endpoint receiving event data
+			req.checkBody('entity').exists().withMessage('entity field is required')
+			req.checkBody('entityId').exists().withMessage('entityId field is required')
+		},
 	}
 
 	if (entitiesValidator[req.params.method]) {

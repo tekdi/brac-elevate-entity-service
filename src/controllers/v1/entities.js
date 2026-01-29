@@ -642,6 +642,144 @@ module.exports = class Entities extends Abstract {
 	}
 
 	/**
+	 * Add entities after bulk import from user service.
+	 * @api {POST} /entity/api/v1/entities/createUserAsAnEntity
+	 * @apiVersion 1.0.0
+	 * @apiName createUserAsAnEntity
+	 * @apiGroup Entities
+	 * @apiHeader {String} X-authenticated-user-token Authenticity token
+	 * @apiHeader {String} internal-access-token Internal access token
+	 * @param {Object} req - Event data from user service bulk create.
+	 * @returns {JSON} - Added entity information.
+	 */
+	createUserAsAnEntity(req) {
+		return new Promise(async (resolve, reject) => {
+			try {
+				const eventData = req.body
+
+				// Get organizations from event data - check direct, oldValues, and newValues
+				const organizations =
+					eventData.organizations ||
+					eventData.oldValues?.organizations ||
+					eventData.newValues?.organizations ||
+					[]
+
+				// Determine entity type based on roles in organizations array
+				// Priority: first check for org_admin role, then check for user role
+				let entityType = null
+				if (organizations.length > 0 && organizations[0].roles && Array.isArray(organizations[0].roles)) {
+					const roles = organizations[0].roles
+					const roleTitles = roles.map((role) => role.title || role.label)
+
+					// Check for org_admin role first (higher priority)
+					if (roleTitles.includes(CONSTANTS.common.ORG_ADMIN)) {
+						entityType = 'linkageChampion'
+					} else if (roleTitles.includes(CONSTANTS.common.USER_ROLE)) {
+						// Check for user role
+						entityType = 'participant'
+					}
+				}
+
+				// If no supported role found, skip the operation
+				if (!entityType) {
+					return resolve({
+						message: CONSTANTS.apiResponses.ENTITY_TYPE_NOT_SUPPORTED,
+						result: null,
+					})
+				}
+
+				// Extract required data from event - check direct, oldValues, and newValues
+				const externalId = eventData.entityId ? eventData.entityId.toString() : null
+				const name = eventData.name || eventData.oldValues?.name || eventData.newValues?.name || null
+
+				if (!externalId || !name) {
+					return reject({
+						status: HTTP_STATUS_CODE.bad_request.status,
+						message: CONSTANTS.apiResponses.MISSING_REQUIRED_FIELDS,
+						errorObject: { externalId, name },
+					})
+				}
+
+				// Construct userDetails from event data - check direct, oldValues, and newValues
+				const tenantId =
+					eventData.tenant_code ||
+					eventData.oldValues?.tenant_code ||
+					eventData.newValues?.tenant_code ||
+					null
+				const orgId = organizations.length > 0 ? organizations[0].id : null
+				const userId =
+					eventData.created_by ||
+					eventData.id ||
+					eventData.userId ||
+					eventData.oldValues?.id ||
+					eventData.newValues?.id ||
+					null
+
+				if (!tenantId || !orgId) {
+					return reject({
+						status: HTTP_STATUS_CODE.bad_request.status,
+						message: CONSTANTS.apiResponses.MISSING_TENANT_OR_ORG_INFO,
+						errorObject: { tenantId, orgId },
+					})
+				}
+
+				const userDetails = {
+					userInformation: {
+						userId: userId ? userId.toString() : 'SYSTEM',
+					},
+					tenantAndOrgInfo: {
+						tenantId: tenantId,
+						orgId: [orgId.toString()],
+					},
+				}
+
+				// Check if entity with same externalId already exists
+				const existingEntity = await entitiesQueries.findOne(
+					{
+						'metaInformation.externalId': externalId,
+						entityType: entityType,
+						tenantId: tenantId,
+					},
+					{ _id: 1, metaInformation: 1, entityType: 1 }
+				)
+
+				if (existingEntity) {
+					// Entity already exists, return existing entity
+					return resolve({
+						message: CONSTANTS.apiResponses.ENTITY_ALREADY_EXISTS,
+						result: existingEntity,
+					})
+				}
+
+				// Prepare query parameters
+				const queryParams = {
+					type: entityType,
+				}
+
+				// Prepare request body for entity creation
+				const entityBody = {
+					externalId: externalId,
+					name: name,
+				}
+
+				// Call 'entitiesHelper.add' to perform the entity addition operation
+				let result = await entitiesHelper.add(queryParams, entityBody, userDetails)
+
+				return resolve({
+					message: CONSTANTS.apiResponses.ENTITY_ADDED,
+					result: result,
+				})
+			} catch (error) {
+				return reject({
+					status: error.status || HTTP_STATUS_CODE.internal_server_error.status,
+					message: error.message || HTTP_STATUS_CODE.internal_server_error.message,
+					errorObject: error,
+				})
+			}
+		})
+	}
+
+	/**
 	 * List of entities by location ids.
 	 * @api {get} v1/entities/list List all entities based locationIds
 	 * @apiVersion 1.0.0

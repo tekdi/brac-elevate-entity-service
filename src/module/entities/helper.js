@@ -1276,7 +1276,7 @@ module.exports = class UserProjectsHelper {
 				}
 
 				let result = await entitiesQueries.getAggregate(aggregateData)
-				count = result[0].totalCount[0]?.count || 0
+				count = result?.[0]?.totalCount?.[0]?.count || 0
 
 				if (aggregateStaging == true) {
 					if (!Array.isArray(result) || !(result.length > 0)) {

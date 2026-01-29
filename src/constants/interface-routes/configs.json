@@ -157,6 +157,19 @@
 			]
 		},
 		{
+			"sourceRoute": "/entity-management/v1/entities/createUserAsAnEntity",
+			"type": "POST",
+			"priority": "MUST_HAVE",
+			"inSequence": false,
+			"orchestrated": false,
+			"targetPackages": [
+				{
+					"basePackageName": "entity",
+					"packageName": "elevate-entity-management"
+				}
+			]
+		},
+		{
 			"sourceRoute": "/entity-management/v1/entities/update",
 			"type": "POST",
 			"priority": "MUST_HAVE",

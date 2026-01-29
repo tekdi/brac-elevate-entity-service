@@ -99,7 +99,9 @@ module.exports = async function (req, res, next, token = '') {
 	)
 
 	if (performInternalAccessTokenCheck) {
-		if (req.headers['internal-access-token'] !== process.env.INTERNAL_ACCESS_TOKEN) {
+		const internalAccessToken = req.headers['internal_access_token'] || req.headers['internal-access-token']
+
+		if (internalAccessToken !== process.env.INTERNAL_ACCESS_TOKEN) {
 			rspObj.errCode = CONSTANTS.apiResponses.TOKEN_MISSING_CODE
 			rspObj.errMsg = CONSTANTS.apiResponses.TOKEN_MISSING_MESSAGE
 			rspObj.responseCode = HTTP_STATUS_CODE['unauthorized'].status
