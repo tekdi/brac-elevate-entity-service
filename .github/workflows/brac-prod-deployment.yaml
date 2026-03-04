@@ -1,0 +1,70 @@
+
+name: BRAC-Production Entity Service deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Enter the Docker image tag to deploy (example: v1.0.0)"
+        required: true
+        type: string
+
+      environment:
+        description: "Select environment"
+        required: true
+        type: choice
+        options:
+          - production
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  ECR_REPOSITORY: ${{ secrets.ECR_REPOSITORY_BRAC }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: ${{ github.event.inputs.environment }}
+
+    steps:
+      # =========================
+      # Configure AWS
+      # =========================
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # =========================
+      # Validate Image Exists in ECR
+      # =========================
+      - name: Validate Image Exists
+        run: |
+          aws ecr describe-images \
+            --repository-name ${{ env.ECR_REPOSITORY }} \
+            --image-ids imageTag=${{ github.event.inputs.tag }} \
+            --region ${{ env.AWS_REGION }} \
+          || (echo "Image tag does not exist in ECR!" && exit 1)
+      # =========================
+      # Deploy to Production
+      # =========================
+      - name: Deploy to Production Server
+        if: github.event.inputs.environment == 'production'
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.HOST_NAME_PROD }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.PORT_PROD }}
+          script: |
+            set -e
+            cd ${{ secrets.TARGET_DIR_PROD }}
+            cp -r .env .env-bkp
+            cat << 'EOF' > .env
+            ${{ secrets.PROD_ENV_BRAC }}
+            EOF
+            ./deploy.sh ${{ github.event.inputs.tag }}
