@@ -657,6 +657,44 @@ module.exports = class Entities extends Abstract {
 			try {
 				const eventData = req.body
 
+				// Update events carry no roles/organizations, so sync the name by externalId before the role-based create flow
+				if (eventData.eventType === 'update') {
+					const newName = eventData.newValues?.name
+					const updateExternalId = eventData.entityId ? eventData.entityId.toString() : null
+					const updateTenantId =
+						eventData.tenant_code ||
+						eventData.oldValues?.tenant_code ||
+						eventData.newValues?.tenant_code ||
+						null
+
+					if (!newName || !updateExternalId || !updateTenantId) {
+						return resolve({ message: CONSTANTS.apiResponses.ENTITY_TYPE_NOT_SUPPORTED, result: null })
+					}
+
+					const entityToUpdate = await entitiesQueries.findOne(
+						{
+							'metaInformation.externalId': updateExternalId,
+							entityType: { $in: ['participant', 'linkageChampion'] },
+							tenantId: updateTenantId,
+						},
+						{ _id: 1, metaInformation: 1, entityType: 1 }
+					)
+
+					if (!entityToUpdate || entityToUpdate.metaInformation?.name === newName) {
+						return resolve({
+							message: CONSTANTS.apiResponses.ENTITY_ALREADY_EXISTS,
+							result: entityToUpdate || null,
+						})
+					}
+
+					const updatedEntity = await entitiesQueries.findOneAndUpdate(
+						{ _id: entityToUpdate._id },
+						{ $set: { 'metaInformation.name': newName, updatedBy: 'SYSTEM' } },
+						{ new: true, projection: { _id: 1, metaInformation: 1, entityType: 1 } }
+					)
+					return resolve({ message: CONSTANTS.apiResponses.ENTITY_UPDATED, result: updatedEntity })
+				}
+
 				// Get organizations from event data - check direct, oldValues, and newValues
 				const organizations =
 					eventData.organizations ||
